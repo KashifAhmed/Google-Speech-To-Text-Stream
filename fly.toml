@@ -1,0 +1,21 @@
+app = "stt-websocket-server"
+primary_region = "sjc"
+
+[build]
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+
+[[http_service.checks]]
+  interval = "10s"
+  timeout = "2s"
+  grace_period = "5s"
+  method = "GET"
+  path = "/"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "8080"
