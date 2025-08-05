@@ -138,6 +138,15 @@ wss.on('error', (error) => {
 
 let clientCounter = 0;
 
+// Cost tracking
+const STT_COST_PER_15_SECONDS = 0.006; // $0.006 per 15 seconds for standard model
+const costTracker = {
+  totalRequests: 0,
+  totalAudioDurationSeconds: 0,
+  totalCostUSD: 0,
+  sessions: []
+};
+
 wss.on('connection', (ws, req) => {
   clientCounter++;
   const clientId = clientCounter;
@@ -152,6 +161,8 @@ wss.on('connection', (ws, req) => {
   
   let recognizeStream = null;
   let isStreamActive = false;
+  let sessionStartTime = null;
+  let sessionAudioDuration = 0;
 
   ws.on('message', async (message) => {
     console.log(`📨 [Server] Client #${clientId} sent message:`, message.toString().substring(0, 200) + '...');
@@ -166,6 +177,8 @@ wss.on('connection', (ws, req) => {
       switch (data.type) {
         case 'start':
           console.log(`🎙️ [Server] Client #${clientId} starting recognition:`, data.config);
+          sessionStartTime = Date.now();
+          sessionAudioDuration = 0;
           startRecognition(ws, data.config);
           break;
         case 'audio':
@@ -174,6 +187,12 @@ wss.on('connection', (ws, req) => {
             // Convert base64 audio to buffer and send to Google STT
             const audioBuffer = Buffer.from(data.audio, 'base64');
             console.log(`📤 [Server] Client #${clientId} forwarding to Google STT, buffer size:`, audioBuffer.length);
+            
+            // Estimate audio duration based on buffer size (rough calculation for WEBM_OPUS)
+            // Assuming ~1.5KB per second for compressed audio
+            const estimatedDurationMs = (audioBuffer.length / 1500) * 1000;
+            sessionAudioDuration += estimatedDurationMs;
+            
             recognizeStream.write(audioBuffer);
           } else {
             console.warn(`⚠️ [Server] Client #${clientId} sent audio but stream not active:`, {
@@ -189,6 +208,19 @@ wss.on('connection', (ws, req) => {
         case 'ping':
           console.log(`💓 [Server] Client #${clientId} ping received, sending pong`);
           ws.send(JSON.stringify({ type: 'pong' }));
+          break;
+        case 'cost_summary':
+          console.log(`💰 [Server] Client #${clientId} requested cost summary`);
+          const summary = {
+            type: 'cost_summary',
+            totalRequests: costTracker.totalRequests,
+            totalAudioDurationSeconds: Math.round(costTracker.totalAudioDurationSeconds * 100) / 100,
+            totalCostUSD: Math.round(costTracker.totalCostUSD * 10000) / 10000,
+            averageCostPerRequest: costTracker.totalRequests > 0 ? 
+              Math.round((costTracker.totalCostUSD / costTracker.totalRequests) * 10000) / 10000 : 0,
+            recentSessions: costTracker.sessions.slice(-10) // Last 10 sessions
+          };
+          ws.send(JSON.stringify(summary));
           break;
         default:
           console.log(`❓ [Server] Client #${clientId} unknown message type:`, data.type);
@@ -282,15 +314,40 @@ wss.on('connection', (ws, req) => {
           const result = data.results[0];
           const transcript = result.alternatives[0].transcript;
           
+          // Calculate cost for this session
+          const sessionDurationSeconds = sessionAudioDuration / 1000;
+          const sessionCost = Math.ceil(sessionDurationSeconds / 15) * STT_COST_PER_15_SECONDS;
+          
+          // Update global cost tracking
+          costTracker.totalRequests++;
+          costTracker.totalAudioDurationSeconds += sessionDurationSeconds;
+          costTracker.totalCostUSD += sessionCost;
+          
+          // Store session info
+          costTracker.sessions.push({
+            clientId: clientId,
+            timestamp: new Date().toISOString(),
+            durationSeconds: sessionDurationSeconds,
+            costUSD: sessionCost,
+            transcript: transcript.substring(0, 100) + (transcript.length > 100 ? '...' : '')
+          });
+          
           // Only final results will come through now
           const response = {
             type: 'transcript',
             transcript: transcript,
             isFinal: true,
             confidence: result.alternatives[0].confidence,
-            languageCode: data.results[0].languageCode
+            languageCode: data.results[0].languageCode,
+            cost: {
+              sessionDurationSeconds: Math.round(sessionDurationSeconds * 100) / 100,
+              sessionCostUSD: Math.round(sessionCost * 10000) / 10000,
+              totalCostUSD: Math.round(costTracker.totalCostUSD * 10000) / 10000
+            }
           };
           
+          console.log(`💰 [Server] Client #${clientId} session cost: $${sessionCost.toFixed(4)} (${sessionDurationSeconds.toFixed(2)}s)`);
+          console.log(`💰 [Server] Total cost to date: $${costTracker.totalCostUSD.toFixed(4)} (${costTracker.totalRequests} requests)`);
           console.log(`📤 [Server] Client #${clientId} sending transcript:`, response);
           ws.send(JSON.stringify(response));
         }
