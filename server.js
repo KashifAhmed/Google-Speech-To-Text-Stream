@@ -115,7 +115,12 @@ try {
     clientTracking: true
   });
   
-  console.log(`🎤 [Server] STT WebSocket server running on ws://localhost:${PORT}`);
+  const isProduction = process.env.NODE_ENV === 'production';
+  const protocol = isProduction ? 'wss' : 'ws';
+  const host = isProduction ? process.env.RENDER_EXTERNAL_URL || 'your-app.onrender.com' : 'localhost';
+  
+  console.log(`🎤 [Server] STT WebSocket server running on ${protocol}://${host}:${PORT}`);
+  console.log(`🔗 [Server] Connect to: ${protocol}://${host}${isProduction ? '' : ':' + PORT}`);
   console.log('🎤 [Server] Server ready to accept connections');
   
 } catch (error) {
