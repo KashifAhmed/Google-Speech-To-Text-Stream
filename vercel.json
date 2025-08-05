@@ -1,0 +1,23 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "api/*.js",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/stt",
+      "dest": "/api/stt.js"
+    }
+  ],
+  "env": {
+    "GOOGLE_APPLICATION_CREDENTIALS": "@google-credentials-json"
+  },
+  "functions": {
+    "api/*.js": {
+      "maxDuration": 30
+    }
+  }
+}
