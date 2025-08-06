@@ -34,6 +34,18 @@ try {
     projectId: credentials.project_id
   });
   console.log('✅ [Server] Google Speech client initialized');
+  
+  // Test authentication on startup
+  speechClient.getProjectId()
+    .then(() => {
+      console.log('✅ [Server] Google Cloud authentication verified');
+    })
+    .catch(error => {
+      console.error('❌ [Server] Google Cloud auth test failed:', error.message);
+      if (error.message.includes('DECODER routines')) {
+        console.error('❌ [Server] Private key format issue detected');
+      }
+    });
     
 } catch (error) {
   console.error('❌ [Server] Failed to initialize Google Speech client:', error.message);
@@ -269,19 +281,11 @@ wss.on('connection', (ws, req) => {
       singleUtterance: false
     };
 
-    console.log(`📤 [Server] Client #${clientId} creating Google STT stream with request:`, JSON.stringify(request, null, 2));
-
     try {
       recognizeStream = speechClient
         .streamingRecognize(request)
         .on('error', (error) => {
-          console.error(`💥 [Server] Client #${clientId} Google STT stream error:`, {
-            message: error.message,
-            code: error.code,
-            details: error.details,
-            metadata: error.metadata,
-            stack: error.stack
-          });
+          console.error(`💥 [Server] Client #${clientId} Google STT error:`, error.message);
           
           // Mark stream as inactive when there's an error
           isStreamActive = false;
@@ -300,7 +304,6 @@ wss.on('connection', (ws, req) => {
           }));
         })
         .on('destroy', () => {
-          console.log(`🔄 [Server] Client #${clientId} Google STT stream destroyed`);
           isStreamActive = false;
           recognizeStream = null;
         })
@@ -347,17 +350,23 @@ wss.on('connection', (ws, req) => {
           ws.send(JSON.stringify(response));
         }
       })
-      .on('end', () => {
-        console.log(`🔚 [Server] Client #${clientId} Google STT stream ended`);
-      });
+      .on('end', () => {});
 
-      isStreamActive = true;
-      console.log(`🎙️ [Server] Client #${clientId} Recognition started successfully`);
-      
-      ws.send(JSON.stringify({
-        type: 'status',
-        status: 'started'
-      }));
+      if (recognizeStream) {
+        isStreamActive = true;
+        console.log(`✅ [Server] Client #${clientId} Google STT stream created successfully`);
+        
+        ws.send(JSON.stringify({
+          type: 'status',
+          status: 'started'
+        }));
+      } else {
+        console.error(`❌ [Server] Client #${clientId} Failed to create Google STT stream`);
+        ws.send(JSON.stringify({
+          type: 'error',
+          message: 'Failed to initialize speech recognition stream'
+        }));
+      }
       
     } catch (error) {
       console.error(`💥 [Server] Client #${clientId} Failed to create Google STT stream:`, {
