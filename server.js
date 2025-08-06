@@ -3,7 +3,7 @@ const speech = require('@google-cloud/speech');
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
-const { buildGoogleCredentials } = require('./utils/googleCredentials');
+const { buildGoogleCredentials, buildGoogleCredentialsAlternative } = require('./utils/googleCredentials');
 require('dotenv').config();
 
 const PORT = process.env.PORT || 8080;
@@ -14,10 +14,19 @@ let credentials;
 
 try {
   credentials = buildGoogleCredentials();
-  console.log('✅ [Server] Google Cloud credentials loaded');
+  console.log('✅ [Server] Google Cloud credentials loaded (primary method)');
 } catch (error) {
-  console.error('❌ [Server] Error building Google Cloud credentials:', error.message);
-  process.exit(1);
+  console.error('❌ [Server] Primary credential method failed:', error.message);
+  console.log('🔄 [Server] Trying alternative credential method...');
+  
+  try {
+    credentials = buildGoogleCredentialsAlternative();
+    console.log('✅ [Server] Google Cloud credentials loaded (alternative method)');
+  } catch (altError) {
+    console.error('❌ [Server] Alternative credential method also failed:', altError.message);
+    console.error('💡 [Server] This may be a Fly.io OpenSSL compatibility issue');
+    process.exit(1);
+  }
 }
 
 // Validate credentials type
@@ -277,7 +286,7 @@ wss.on('connection', (ws, req) => {
         model: 'latest_long',
         useEnhanced: true,
       },
-      interimResults: true,
+      interimResults: false,
       singleUtterance: false
     };
 
