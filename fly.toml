@@ -1,4 +1,4 @@
-app = "stt-websocket-server"
+app = "google-speech-to-text-stream"
 primary_region = "sjc"
 
 [build]
@@ -11,9 +11,9 @@ primary_region = "sjc"
   min_machines_running = 1 
 
 [[http_service.checks]]
-  interval = "10s"
-  timeout = "2s"
-  grace_period = "5s"
+  interval = "30s"        # Increased from 10s
+  timeout = "10s"         # Increased from 2s  
+  grace_period = "30s"    # Increased from 5s
   method = "GET"
   path = "/"
 
