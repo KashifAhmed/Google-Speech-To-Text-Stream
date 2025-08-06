@@ -189,7 +189,7 @@ wss.on('connection', (ws, req) => {
           break;
         case 'audio':
           console.log(`🎵 [Server] Client #${clientId} sent audio chunk, size:`, data.audio ? data.audio.length : 0);
-          if (recognizeStream && isStreamActive) {
+          if (recognizeStream && isStreamActive && !recognizeStream.destroyed) {
             // Convert base64 audio to buffer and send to Google STT
             const audioBuffer = Buffer.from(data.audio, 'base64');
             console.log(`📤 [Server] Client #${clientId} forwarding to Google STT, buffer size:`, audioBuffer.length);
@@ -199,11 +199,21 @@ wss.on('connection', (ws, req) => {
             const estimatedDurationMs = (audioBuffer.length / 1500) * 1000;
             sessionAudioDuration += estimatedDurationMs;
             
-            recognizeStream.write(audioBuffer);
+            try {
+              recognizeStream.write(audioBuffer);
+            } catch (error) {
+              console.error(`💥 [Server] Client #${clientId} error writing to stream:`, error.message);
+              if (error.code === 'ERR_STREAM_DESTROYED') {
+                console.log(`🔄 [Server] Client #${clientId} stream was destroyed, marking as inactive`);
+                isStreamActive = false;
+                recognizeStream = null;
+              }
+            }
           } else {
             console.warn(`⚠️ [Server] Client #${clientId} sent audio but stream not active:`, {
               recognizeStream: !!recognizeStream,
-              isStreamActive
+              isStreamActive,
+              isDestroyed: recognizeStream ? recognizeStream.destroyed : 'N/A'
             });
           }
           break;
@@ -271,7 +281,15 @@ wss.on('connection', (ws, req) => {
     
     if (recognizeStream) {
       console.log(`🔄 [Server] Client #${clientId} destroying existing recognition stream`);
-      recognizeStream.destroy();
+      try {
+        if (!recognizeStream.destroyed) {
+          recognizeStream.destroy();
+        }
+      } catch (error) {
+        console.error(`💥 [Server] Client #${clientId} error destroying stream:`, error.message);
+      }
+      recognizeStream = null;
+      isStreamActive = false;
     }
 
     const request = {
@@ -390,7 +408,15 @@ wss.on('connection', (ws, req) => {
     
     if (recognizeStream) {
       console.log(`⏹️ [Server] Client #${clientId} ending Google STT stream`);
-      recognizeStream.end();
+      try {
+        if (!recognizeStream.destroyed) {
+          recognizeStream.end();
+        } else {
+          console.log(`⚠️ [Server] Client #${clientId} stream already destroyed`);
+        }
+      } catch (error) {
+        console.error(`💥 [Server] Client #${clientId} error ending stream:`, error.message);
+      }
       recognizeStream = null;
       isStreamActive = false;
       console.log(`⏹️ [Server] Client #${clientId} Recognition stopped`);
