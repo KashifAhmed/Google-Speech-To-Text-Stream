@@ -17,53 +17,65 @@ console.log('📊 [Server] Environment variables:', {
 
 // Validate Google Cloud credentials
 console.log('🔍 [Server] Validating Google Cloud credentials...');
-const credentialsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+const credentialsEnv = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+const credentialsJsonEnv = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
 
-if (!credentialsPath) {
-  console.error('❌ [Server] GOOGLE_APPLICATION_CREDENTIALS environment variable not set');
+let credentials;
+
+if (credentialsJsonEnv) {
+  // Direct JSON in environment variable
+  console.log('📋 [Server] Using inline JSON credentials from GOOGLE_APPLICATION_CREDENTIALS_JSON');
+  try {
+    credentials = JSON.parse(credentialsJsonEnv);
+    console.log('✅ [Server] Inline JSON credentials parsed successfully');
+  } catch (error) {
+    console.error('❌ [Server] Error parsing GOOGLE_APPLICATION_CREDENTIALS_JSON:', error.message);
+    process.exit(1);
+  }
+} else if (credentialsEnv) {
+  // File path in environment variable
+  console.log('📁 [Server] Using credentials file from GOOGLE_APPLICATION_CREDENTIALS:', credentialsEnv);
+  console.log('📁 [Server] Resolved path:', path.resolve(credentialsEnv));
+
+  // Check if credentials file exists
+  if (!fs.existsSync(credentialsEnv)) {
+    console.error('❌ [Server] Credentials file not found at:', credentialsEnv);
+    console.error('❌ [Server] Current working directory:', process.cwd());
+    console.error('❌ [Server] Files in current directory:', fs.readdirSync('.'));
+    process.exit(1);
+  }
+
+  try {
+    const credentialsContent = fs.readFileSync(credentialsEnv, 'utf8');
+    credentials = JSON.parse(credentialsContent);
+    console.log('✅ [Server] Credentials file found and parsed successfully');
+  } catch (error) {
+    console.error('❌ [Server] Error reading/parsing credentials file:', error.message);
+    process.exit(1);
+  }
+} else {
+  console.error('❌ [Server] Neither GOOGLE_APPLICATION_CREDENTIALS nor GOOGLE_APPLICATION_CREDENTIALS_JSON environment variable is set');
   process.exit(1);
 }
 
-console.log('📁 [Server] Credentials path:', credentialsPath);
-console.log('📁 [Server] Resolved path:', path.resolve(credentialsPath));
+console.log('📋 [Server] Service account info:', {
+  project_id: credentials.project_id,
+  client_email: credentials.client_email,
+  type: credentials.type,
+  hasPrivateKey: !!credentials.private_key
+});
 
-// Check if credentials file exists
-if (!fs.existsSync(credentialsPath)) {
-  console.error('❌ [Server] Credentials file not found at:', credentialsPath);
-  console.error('❌ [Server] Current working directory:', process.cwd());
-  console.error('❌ [Server] Files in current directory:', fs.readdirSync('.'));
+// Validate required fields
+const requiredFields = ['type', 'project_id', 'private_key_id', 'private_key', 'client_email', 'client_id', 'auth_uri', 'token_uri'];
+const missingFields = requiredFields.filter(field => !credentials[field]);
+
+if (missingFields.length > 0) {
+  console.error('❌ [Server] Missing required fields in credentials:', missingFields);
   process.exit(1);
 }
 
-// Validate credentials file format
-try {
-  const credentialsContent = fs.readFileSync(credentialsPath, 'utf8');
-  const credentials = JSON.parse(credentialsContent);
-  
-  console.log('✅ [Server] Credentials file found and parsed successfully');
-  console.log('📋 [Server] Service account info:', {
-    project_id: credentials.project_id,
-    client_email: credentials.client_email,
-    type: credentials.type,
-    hasPrivateKey: !!credentials.private_key
-  });
-  
-  // Validate required fields
-  const requiredFields = ['type', 'project_id', 'private_key_id', 'private_key', 'client_email', 'client_id', 'auth_uri', 'token_uri'];
-  const missingFields = requiredFields.filter(field => !credentials[field]);
-  
-  if (missingFields.length > 0) {
-    console.error('❌ [Server] Missing required fields in credentials:', missingFields);
-    process.exit(1);
-  }
-  
-  if (credentials.type !== 'service_account') {
-    console.error('❌ [Server] Invalid credentials type. Expected "service_account", got:', credentials.type);
-    process.exit(1);
-  }
-  
-} catch (error) {
-  console.error('❌ [Server] Error reading/parsing credentials file:', error.message);
+if (credentials.type !== 'service_account') {
+  console.error('❌ [Server] Invalid credentials type. Expected "service_account", got:', credentials.type);
   process.exit(1);
 }
 
@@ -72,7 +84,11 @@ console.log('🔧 [Server] Initializing Google Speech client...');
 let speechClient;
 
 try {
-  speechClient = new speech.SpeechClient();
+  // Initialize with explicit credentials
+  speechClient = new speech.SpeechClient({
+    credentials: credentials,
+    projectId: credentials.project_id
+  });
   console.log('✅ [Server] Google Speech client initialized');
   
   // Test the client connection
