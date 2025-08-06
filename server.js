@@ -8,33 +8,17 @@ require('dotenv').config();
 
 const PORT = process.env.PORT || 8080;
 
-console.log('🚀 [Server] Starting STT WebSocket server...');
-console.log('📊 [Server] Environment variables:', {
-  PORT,
-  GOOGLE_CLOUD_PROJECT_ID: process.env.GOOGLE_CLOUD_PROJECT_ID ? 'SET' : 'NOT SET',
-  GOOGLE_CLOUD_CLIENT_EMAIL: process.env.GOOGLE_CLOUD_CLIENT_EMAIL ? 'SET' : 'NOT SET',
-  NODE_ENV: process.env.NODE_ENV || 'development',
-  PWD: process.cwd()
-});
+console.log('🚀 [Server] Starting STT WebSocket server on port', PORT);
 
-// Build Google Cloud credentials from environment variables
-console.log('� [Server] Building Google Cloud credentials from environment variables...');
 let credentials;
 
 try {
   credentials = buildGoogleCredentials();
-  console.log('✅ [Server] Google Cloud credentials built successfully');
+  console.log('✅ [Server] Google Cloud credentials loaded');
 } catch (error) {
   console.error('❌ [Server] Error building Google Cloud credentials:', error.message);
   process.exit(1);
 }
-
-console.log('📋 [Server] Service account info:', {
-  project_id: credentials.project_id,
-  client_email: credentials.client_email,
-  type: credentials.type,
-  hasPrivateKey: !!credentials.private_key
-});
 
 // Validate credentials type
 if (credentials.type !== 'service_account') {
@@ -42,28 +26,14 @@ if (credentials.type !== 'service_account') {
   process.exit(1);
 }
 
-// Initialize Google Speech client with detailed error handling
-console.log('🔧 [Server] Initializing Google Speech client...');
 let speechClient;
 
 try {
-  // Initialize with explicit credentials
   speechClient = new speech.SpeechClient({
     credentials: credentials,
     projectId: credentials.project_id
   });
   console.log('✅ [Server] Google Speech client initialized');
-  
-  // Test the client connection
-  console.log('🧪 [Server] Testing Google Speech client connection...');
-  speechClient.getProjectId()
-    .then(projectId => {
-      console.log('✅ [Server] Google Speech client connection successful. Project ID:', projectId);
-    })
-    .catch(error => {
-      console.error('❌ [Server] Google Speech client connection test failed:', error.message);
-      console.error('❌ [Server] Full error:', error);
-    });
     
 } catch (error) {
   console.error('❌ [Server] Failed to initialize Google Speech client:', error.message);
@@ -84,8 +54,6 @@ process.on('unhandledRejection', (reason, promise) => {
   process.exit(1);
 });
 
-// Create HTTP server first
-console.log('🔧 [Server] Creating HTTP server on port', PORT);
 const server = http.createServer((req, res) => {
   if (req.method === 'GET' && req.url === '/') {
     // Health check endpoint
@@ -101,8 +69,6 @@ const server = http.createServer((req, res) => {
   }
 });
 
-// WebSocket server
-console.log('🔧 [Server] Creating WebSocket server on port', PORT);
 let wss;
 
 try {
@@ -129,10 +95,6 @@ try {
   process.exit(1);
 }
 
-wss.on('listening', () => {
-  console.log('👂 [Server] WebSocket server is listening');
-  console.log('🌐 [Server] Health check: Server is operational');
-});
 
 wss.on('error', (error) => {
   console.error('💥 [Server] WebSocket server error:', {
@@ -303,8 +265,8 @@ wss.on('connection', (ws, req) => {
         model: 'latest_long',
         useEnhanced: true,
       },
-      interimResults: false, // Changed from true to false
-      singleUtterance: true  // Changed from false to true
+      interimResults: true,
+      singleUtterance: false
     };
 
     console.log(`📤 [Server] Client #${clientId} creating Google STT stream with request:`, JSON.stringify(request, null, 2));
