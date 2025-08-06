@@ -321,6 +321,10 @@ wss.on('connection', (ws, req) => {
             stack: error.stack
           });
           
+          // Mark stream as inactive when there's an error
+          isStreamActive = false;
+          recognizeStream = null;
+          
           // Send detailed error info to client
           const errorMessage = error.code ? 
             `Google STT Error [${error.code}]: ${error.message}` : 
@@ -332,6 +336,11 @@ wss.on('connection', (ws, req) => {
             code: error.code,
             details: error.details
           }));
+        })
+        .on('destroy', () => {
+          console.log(`🔄 [Server] Client #${clientId} Google STT stream destroyed`);
+          isStreamActive = false;
+          recognizeStream = null;
         })
       .on('data', (data) => {
         if (data.results[0] && data.results[0].alternatives[0]) {
