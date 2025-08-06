@@ -2,6 +2,7 @@ const WebSocket = require('ws');
 const speech = require('@google-cloud/speech');
 const fs = require('fs');
 const path = require('path');
+const http = require('http');
 require('dotenv').config();
 
 const PORT = process.env.PORT || 8080;
@@ -104,13 +105,30 @@ process.on('unhandledRejection', (reason, promise) => {
   process.exit(1);
 });
 
+// Create HTTP server first
+console.log('🔧 [Server] Creating HTTP server on port', PORT);
+const server = http.createServer((req, res) => {
+  if (req.method === 'GET' && req.url === '/') {
+    // Health check endpoint
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ 
+      status: 'healthy', 
+      service: 'STT WebSocket Server',
+      timestamp: new Date().toISOString()
+    }));
+  } else {
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('Not Found');
+  }
+});
+
 // WebSocket server
 console.log('🔧 [Server] Creating WebSocket server on port', PORT);
 let wss;
 
 try {
   wss = new WebSocket.Server({ 
-    port: PORT,
+    server: server,
     perMessageDeflate: false,
     clientTracking: true
   });
@@ -119,9 +137,13 @@ try {
   const protocol = isProduction ? 'wss' : 'ws';
   const host = isProduction ? process.env.RENDER_EXTERNAL_URL || 'your-app.onrender.com' : 'localhost';
   
-  console.log(`🎤 [Server] STT WebSocket server running on ${protocol}://${host}:${PORT}`);
-  console.log(`🔗 [Server] Connect to: ${protocol}://${host}${isProduction ? '' : ':' + PORT}`);
-  console.log('🎤 [Server] Server ready to accept connections');
+  // Start the HTTP server
+  server.listen(PORT, () => {
+    console.log(`🎤 [Server] STT WebSocket server running on ${protocol}://${host}:${PORT}`);
+    console.log(`🔗 [Server] Connect to: ${protocol}://${host}${isProduction ? '' : ':' + PORT}`);
+    console.log(`🏥 [Server] Health check available at: http://${host}${isProduction ? '' : ':' + PORT}/`);
+    console.log('🎤 [Server] Server ready to accept connections');
+  });
   
 } catch (error) {
   console.error('💥 [Server] Failed to create WebSocket server:', error);
