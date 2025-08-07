@@ -1,22 +1,23 @@
-app = "google-speech-to-text-stream"
-primary_region = "sjc"
+# fly.toml app configuration file generated for google-speech-to-text-stream on 2025-08-07T17:50:19Z
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'google-speech-to-text-stream'
+primary_region = 'sin'
 
 [build]
 
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = false
+  auto_stop_machines = 'stop'
   auto_start_machines = true
-  min_machines_running = 1 
+  min_machines_running = 0
+  processes = ['app']
 
-[[http_service.checks]]
-  interval = "30s"        # Increased from 10s
-  timeout = "10s"         # Increased from 2s  
-  grace_period = "30s"    # Increased from 5s
-  method = "GET"
-  path = "/"
-
-[env]
-  NODE_ENV = "production"
-  PORT = "8080"
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
+  memory_mb = 1024
